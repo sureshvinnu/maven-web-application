@@ -1,0 +1,74 @@
+pipeline
+{
+    agent any
+
+    tools
+    {
+        maven 'Maven_3.9.7'
+    }
+    
+    environment
+    {
+        buildNumber = "${BUILD_NUMBER}"
+    }
+
+    stages
+    {
+        stage('Git Checkout')
+        {
+            steps()
+            {
+                git branch: 'newbranch', url: 'https://github.com/sureshvinnu/maven-web-application.git'
+            }
+        }
+
+        stage('Build Project')
+        {
+            steps()
+            {
+                sh 'mvn clean package'
+            }
+        }
+
+        stage('Build Docker Image')
+        {
+            steps()
+            {
+                sh 'docker build -t sureshkalaparthi/login-service:${buildNumber} .'
+            }
+        }
+
+        stage('Push Docker Image to DockerHub Registry')
+        {
+            steps()
+            {
+                withCredentials([string(credentialsId: 'Docker_Hub_Password', variable: 'Docker_Hub_Password')])
+                {
+                    sh 'docker login -u sureshkalaparthi -p ${Docker_Hub_Password}'
+                }
+                sh 'docker push sureshkalaparthi/login-service:${buildNumber}'
+            }
+        }
+
+        stage('Delete Docker Image Locally in Jenkins Build Server')
+        {
+            steps()
+            {
+                sh 'docker rmi -f sureshkalaparthi/login-service:${buildNumber}'
+            }
+        }
+
+        stage('Deploy Application to Docker Deployment Server')
+        {
+            steps()
+            {
+                sshagent(['DeploymentServer_SSH'])
+                {
+                    sh "ssh -o StrictHostKeyChecking=no ubuntu@13.215.252.204 docker rm -f mavenwebapplication || true"
+                    sh "ssh -o StrictHostKeyChecking=no ubuntu@13.215.252.204 docker run -d --name mavenwebapplication -p 8080:8080 sureshkalaparthi/login-service
+:${buildNumber}"
+                }
+            }
+        }
+    }
+}
